@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iswearenglish</title>
+<style>
+  :root{
+    --paper:#E8EAE6; --card:#F2F3F0; --ink:#16211C;
+    --muted:#5C6B62; --rule:#C5CCC5; --teal:#1B5E5A; --ochre:#A8741A;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    padding:20px 16px 40px;
+  }
+  .wrap{max-width:620px;margin:0 auto}
+  .lede{font-size:13px;color:var(--muted);margin-bottom:14px}
+  .row{display:flex;gap:8px;margin-bottom:6px}
+  input{
+    flex:1;min-width:0;font-family:Georgia,"Iowan Old Style",serif;
+    font-size:26px;line-height:1.2;padding:10px 12px;color:var(--ink);
+    background:var(--card);border:1px solid var(--rule);border-radius:2px;outline:none;
+  }
+  input.key{font-family:ui-monospace,monospace;font-size:14px;width:100%}
+  button{
+    padding:0 18px;font-size:15px;font-weight:600;color:var(--paper);
+    background:var(--teal);border:none;border-radius:2px;cursor:pointer;
+  }
+  button:disabled{background:var(--muted)}
+  .links{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin-bottom:20px}
+  .links a,.links button.link{
+    color:var(--teal);background:none;border:none;padding:0;font-size:13px;
+    text-decoration:underline;cursor:pointer;
+  }
+  .headword{font-family:Georgia,serif;font-size:32px;line-height:1.15}
+  .meta{border-top:1px solid var(--rule);margin-top:8px;padding-top:6px;font-size:13px;color:var(--muted)}
+  .item{
+    background:var(--card);border:1px solid var(--rule);border-radius:2px;
+    padding:12px 14px;display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;
+  }
+  .item a{color:var(--ink);font-size:15px;line-height:1.4;text-decoration:none;display:block}
+  .sub{margin-top:6px;font-size:12px;color:var(--muted)}
+  .star{background:none;border:none;font-size:20px;line-height:1;padding:2px 4px;color:var(--rule);cursor:pointer}
+  .star.on{color:var(--ochre)}
+  .panel{
+    background:var(--card);border:1px solid var(--rule);border-radius:2px;
+    padding:16px;margin-bottom:20px;font-size:14px;line-height:1.55;
+  }
+  .panel h2{font-family:Georgia,serif;font-size:20px;font-weight:400;margin:0 0 10px}
+  .err{font-size:13px;color:#7A2E2E;line-height:1.5;word-break:break-word}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="lede">Поиск по каналу iswearenglish — весь индекс, минуя Google</div>
+
+  <div class="row">
+    <input id="q" placeholder="слово или выражение" autocapitalize="none" autocorrect="off" spellcheck="false">
+    <button id="go">Найти</button>
+  </div>
+
+  <div class="links">
+    <button class="link" id="tabSaved">Сохранённые (0)</button>
+    <button class="link" id="tabKey">Ключ</button>
+    <a id="ytLink" target="_blank" rel="noreferrer" style="color:var(--muted)">Открыть в YouTube</a>
+  </div>
+
+  <div class="panel" id="keyPanel" hidden>
+    <h2>Ключ YouTube Data API</h2>
+    <p style="margin:0 0 10px;color:var(--muted)">
+      Хранится только в этом браузере. 10 000 единиц квоты в сутки, поиск стоит 100 —
+      около 100 запросов в день, карта не нужна.
+    </p>
+    <input class="key" id="keyInput" placeholder="AIza..." autocapitalize="none" autocorrect="off" spellcheck="false">
+    <div style="margin-top:10px;display:flex;gap:10px">
+      <button id="saveKey">Сохранить ключ</button>
+      <button class="link" id="closeKey">Закрыть</button>
+    </div>
+  </div>
+
+  <div id="head" hidden>
+    <div class="headword" id="hw"></div>
+    <div class="meta" id="mt"></div>
+  </div>
+
+  <div id="list"></div>
+</div>
+
+<script>
+const CHANNEL_ID = "UC6UdDGN__Ct3mYSu9H5M6Hw";
+const $ = id => document.getElementById(id);
+
+function load(k, d){ try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
+function store(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+
+let saved = load("isw:saved", []);
+let apiKey = load("isw:key", "");
+let results = [];
+let view = "results";
+
+$("keyInput").value = apiKey;
+refreshSavedLabel();
+
+function refreshSavedLabel(){ $("tabSaved").textContent = "Сохранённые (" + saved.length + ")"; }
+
+$("q").addEventListener("input", e => {
+  $("ytLink").href = "https://www.youtube.com/@iswearenglish/search?query=" + encodeURIComponent(e.target.value.trim());
+});
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") run(); });
+$("go").addEventListener("click", run);
+
+$("tabKey").addEventListener("click", () => { $("keyPanel").hidden = !$("keyPanel").hidden; });
+$("closeKey").addEventListener("click", () => { $("keyPanel").hidden = true; });
+$("saveKey").addEventListener("click", () => {
+  apiKey = $("keyInput").value.trim();
+  store("isw:key", apiKey);
+  $("keyPanel").hidden = true;
+});
+$("tabSaved").addEventListener("click", () => {
+  view = view === "saved" ? "results" : "saved";
+  $("head").hidden = view === "saved";
+  render();
+});
+
+async function run(){
+  const w = $("q").value.trim();
+  if (!w) return;
+  if (!apiKey){ $("keyPanel").hidden = false; return; }
+
+  view = "results";
+  $("head").hidden = false;
+  $("hw").textContent = w;
+  $("mt").textContent = "Ищу…";
+  $("list").innerHTML = "";
+
+  const url = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=25"
+    + "&channelId=" + CHANNEL_ID + "&q=" + encodeURIComponent(w) + "&key=" + encodeURIComponent(apiKey);
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error){
+      $("mt").innerHTML = '<span class="err">' + (data.error.message || "ошибка") + "</span>";
+      return;
+    }
+    results = (data.items || []).map(it => ({
+      id: it.id.videoId,
+      title: it.snippet.title,
+      when: (it.snippet.publishedAt || "").slice(0,10),
+      word: w
+    }));
+    $("mt").textContent = results.length ? results.length + " видео" : "Ничего не нашлось на канале.";
+    render();
+  } catch (e) {
+    $("mt").innerHTML = '<span class="err">Запрос не прошёл: ' + e.message + "</span>";
+  }
+}
+
+function render(){
+  const list = view === "saved" ? saved : results;
+  $("list").innerHTML = "";
+  if (view === "saved" && !saved.length){
+    $("list").innerHTML = '<div style="color:var(--muted);font-size:14px">Пусто. Отметь видео звёздочкой.</div>';
+    return;
+  }
+  for (const v of list){
+    const on = saved.some(s => s.id === v.id);
+    const el = document.createElement("div");
+    el.className = "item";
+    const left = document.createElement("div");
+    left.style.flex = "1"; left.style.minWidth = "0";
+    const a = document.createElement("a");
+    a.href = "https://www.youtube.com/watch?v=" + v.id;
+    a.target = "_blank"; a.rel = "noreferrer";
+    a.textContent = v.title;
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = [view === "saved" ? v.word : null, v.when].filter(Boolean).join("  ·  ");
+    left.append(a, sub);
+    const b = document.createElement("button");
+    b.className = "star" + (on ? " on" : "");
+    b.textContent = on ? "★" : "☆";
+    b.addEventListener("click", () => {
+      saved = saved.some(s => s.id === v.id)
+        ? saved.filter(s => s.id !== v.id)
+        : [{...v}, ...saved];
+      store("isw:saved", saved);
+      refreshSavedLabel();
+      render();
+    });
+    el.append(left, b);
+    $("list").append(el);
+  }
+}
+</script>
+</body>
+</html>
